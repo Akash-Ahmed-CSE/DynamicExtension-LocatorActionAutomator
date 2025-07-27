@@ -1,64 +1,84 @@
-# 🔁 Locator Action Automator - Chrome Extension
+# Locator Action Automator Chrome Extension
+## Overview
+A Chrome extension that automates web interactions by executing predefined actions on page elements identified by various locators (CSS, ID, Name, XPath). Supports recording, importing, and exporting test sequences.
 
-A lightweight Chrome extension to automate form interactions and generate data on any webpage using CSS, ID, Name, or XPath selectors.
+## Features
 
-## ✨ Features
+- **Multiple Locator Types**:
+  - CSS Selectors
+  - Element ID
+  - Name attribute
+  - XPath expressions
 
-- Supports **looped automation** for repeated input
-- Supports locator types: **CSS**, **ID**, **Name**, and **XPath**
-- Performs actions: **Click**, **Input**, **Random String**, and **Select**
-- Includes **Start**, **Stop**, and **Reset** controls
-- Keeps extension popup open during page interactions
-- Works across all standard websites
+- **Action Types**:
+  - Click elements
+  - Input text
+  - Generate random strings
+  - Select dropdown options
+  - Wait/delay between actions
+  - Loop entire sequences
 
-## 🚀 Getting Started
+- **Import/Export**:
+  - Save test sequences as JSON
+  - Load previously saved configurations
+  - Share test cases with team members
 
-1. **Clone or Download** this repo.
-2. Open **Chrome** and navigate to:
-chrome://extensions/
-3. Enable **Developer Mode**.
-4. Click **"Load unpacked"** and select the folder containing the extension.
+- **Execution Control**:
+  - Start/stop automation
+  - Set loop counts
+  - Real-time status feedback
 
-## 🔧 Usage
+## Installation
 
-1. Open the popup.
-2. Add locator details:
-- **Locator Type**: css / id / name / xpath
-- **Locator Value**: e.g., `#username`, `//input[@type='text']`
-- **Action**: click / input / random_string / select
-- **Action Value**: (Optional) Text or value to input/select
-3. Set the **loop count** (how many times to repeat).
-4. Click **Start** to begin automation.
-5. Use **Stop** to halt it anytime.
-6. **Reset** clears your inputs.
+1. Clone this repository or download the source code
+2. Open Chrome and navigate to `chrome://extensions/`
+3. Enable "Developer mode" (toggle in top-right corner)
+4. Click "Load unpacked" and select the extension directory
 
-## 🛑 Limitations
+## Usage
 
-- Best suited for **small forms** and **simple input workflows**
-- Not designed to replace full-featured automation frameworks like Selenium or Playwright
+### Creating Test Sequences
+1. Click "+" buttons to add new action rows
+2. For each action:
+   - Select locator type (CSS, ID, Name, XPath)
+   - Enter locator value
+   - Choose action type
+   - Provide action value if required
 
-## 🧠 Notes
+### Running Tests
+1. Set loop count (default: 1)
+2. Click "Start" to begin execution
+3. Click "Stop" to abort current execution
 
-- Extension does not close automatically on page interaction
-- You can test it on any form-based webpage
-- Uses localStorage to persist stop flags and prevent loop continuation
+### Import/Export
+- **Export**: Click "Export" to save current sequence as JSON
+- **Import**: Click "Import" and select a JSON file
 
-## 💡 Roadmap (Planned)
+### Example Test Case
+```json
+[
+  {
+    "locatorType": "css",
+    "locatorValue": "#username",
+    "action": "input",
+    "actionValue": "testuser"
+  },
+  {
+    "locatorType": "css",
+    "locatorValue": "#password",
+    "action": "input",
+    "actionValue": "secure123"
+  },
+  {
+    "locatorType": "css",
+    "locatorValue": "#login-button",
+    "action": "click"
+  }
+]
+```
 
-- Support for dynamic delays
-- Validation and result status per step
-- Export/Import task sets
-- Dark mode UI
-
-## 🙋 Feedback
-
-https://github.com/user-attachments/assets/4c071ac9-760e-4f90-bc89-0e954d64a90f
 
 
 
-This was built in a day as a prototype. I'm actively improving it.  
-**Suggestions, bug reports, and contributions are very welcome!**
+https://github.com/user-attachments/assets/80fccde5-fb9e-4e5f-92f2-c9464001e118
 
----
-
-**Made with 💻 by [Akash Ahmed]**
