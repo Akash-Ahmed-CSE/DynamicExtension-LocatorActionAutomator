@@ -75,20 +75,10 @@ A Chrome extension that automates web interactions by executing predefined actio
     "action": "click"
   }
 ]
-
-
-Technical Details
-File Structure
-
-locator-automator/
-├── popup.html       # Main interface
-├── popup.js         # Core functionality
-├── background.js    # Extension background script
-├── manifest.json    # Extension configuration
-└── README.md        # This documentation
+```
 
 
 
 
-https://github.com/user-attachments/assets/22c73fb5-10a8-430e-ad09-891d1502168e
+https://github.com/user-attachments/assets/80fccde5-fb9e-4e5f-92f2-c9464001e118
 
