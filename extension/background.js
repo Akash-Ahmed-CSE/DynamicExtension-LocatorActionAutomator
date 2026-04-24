@@ -91,17 +91,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (!automations[tabId]) return;
-  if (changeInfo.status === "loading") {
+  
+  // When page starts loading, ensure we stop current processing 
+  // to allow the "complete" status to trigger the next step.
+  if (changeInfo.status === "complete" && automations[tabId].isActive) {
     automations[tabId].processing = false;
-  } else if (changeInfo.status === "complete") {
-    setTimeout(() => executeNextStep(tabId), 1000);
+    saveState();
+    setTimeout(() => executeNextStep(tabId), 1500); // 1.5s delay to let dynamic content load
   }
 });
 
 // 🔥 MAIN EXECUTOR
 async function executeNextStep(tabId) {
   const state = automations[tabId];
-  if (!state || !state.isActive || state.processing) return;
+  if (!state || !state.isActive) return;
+
+  // If already processing, don't start another instance
+  if (state.processing) return;
+
+  // Check if the tab is still loading
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.status === "loading") {
+      console.log("⏳ Tab is loading, waiting for completion...");
+      return; 
+    }
+  } catch (e) {
+    return; // Tab might be closed
+  }
 
   // Check if we need to advance to next loop
   if (state.taskIndex >= state.tasks.length) {
@@ -174,7 +191,6 @@ async function executeNextStep(tabId) {
       target: { tabId },
       args: [task],
       func: async (task) => {
-
         // 🔍 WAIT FOR ELEMENT
         const waitForElement = (type, value, timeout = 6000) => {
           return new Promise(resolve => {
@@ -294,10 +310,16 @@ async function executeNextStep(tabId) {
     });
 
   } catch (err) {
-    console.error("❌ Script error:", err);
+    // If context is invalidated or port closed during a click, it's usually navigation.
+    // We should move to the next task regardless.
+    if (task.action !== "click") {
+      console.error("❌ Task failed:", err.message);
+      state.processing = false;
+      return; 
+    }
+    console.warn("⚠️ Navigation detected during click.");
   }
 
-  // ✅ MOVE INDEX AFTER EXECUTION
   state.taskIndex++;
   state.processing = false;
   saveState();
