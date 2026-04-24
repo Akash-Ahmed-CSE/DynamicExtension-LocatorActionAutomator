@@ -8,7 +8,7 @@
       font-family: Arial;
       padding: 8px;
       font-size: 13px;
-      width: 450px;
+      width: 600px;
     }
 
     .row {
@@ -24,25 +24,39 @@
     .row input {
       padding: 2px 4px;
       font-size: 12px;
-      min-width: 80px;
-      max-width: 100px;
       border: 1px solid #ccc;
       border-radius: 3px;
+      flex-shrink: 0;
     }
 
-    .row input.actionValue,
-    .row input.waitTime {
-      min-width: 100px;
-      max-width: 120px;
+    .row select {
+      min-width: 70px;
+    }
+
+    .row input.locatorValue {
+      min-width: 90px;
+      max-width: 100px;
+    }
+
+    .row input.actionValue {
+      min-width: 80px;
+      max-width: 90px;
+    }
+
+    .row input.waitTime,
+    .row input.incrementStart {
+      min-width: 55px;
+      max-width: 65px;
     }
 
     .row-actions {
       display: flex;
-      gap: 4px;
+      gap: 3px;
+      flex-shrink: 0;
     }
 
     .row button {
-      padding: 1px 5px;
+      padding: 1px 4px;
       font-size: 11px;
       height: 22px;
     }
@@ -156,7 +170,6 @@
       background-color: #c82333;
     }
 
-
     .loop-status {
       font-size: 12px;
       font-weight: bold;
@@ -174,8 +187,31 @@
       color: #155724;
       border-color: #c3e6cb;
     }
+
+    /* Checkbox styling for random option */
+    .random-checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 11px;
+      white-space: nowrap;
+      cursor: pointer;
+      flex-shrink: 0;
+      color: #555;
+    }
+
+    .random-checkbox-label span {
+      font-size: 11px;
+    }
+
+    .random-checkbox {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
   </style>
-  <base target="_blank">
   <base target="_blank">
 </head>
 

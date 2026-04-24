@@ -30,9 +30,11 @@ function updateLoopStatus(currentLoop, totalLoops) {
     return;
   }
 
-  loopStatusEl.textContent = `Loop: ${currentLoop} / ${totalLoops}`;
+  // Ensure we don't show currentLoop > totalLoops
+  const displayLoop = Math.min(currentLoop, totalLoops);
+  loopStatusEl.textContent = `Loop: ${displayLoop} / ${totalLoops}`;
 
-  if (currentLoop > 0 && currentLoop <= totalLoops) {
+  if (displayLoop > 0 && displayLoop <= totalLoops) {
     loopStatusEl.classList.add('running');
   } else {
     loopStatusEl.classList.remove('running');
@@ -59,6 +61,7 @@ function setRunningState(running, currentLoop = 0, totalLoops = 0) {
 function createLocatorRow(task = {}) {
   const row = document.createElement("div");
   row.className = "row";
+  // Tight layout: checkbox right before buttons
   row.innerHTML = `
     <select class="locatorType">
       <option value="css">CSS</option>
@@ -71,11 +74,17 @@ function createLocatorRow(task = {}) {
       <option value="click">Click</option>
       <option value="input">Input</option>
       <option value="random_string">Random String</option>
+      <option value="input_increment">Input String + Increment</option>
       <option value="select">Select</option>
       <option value="wait">Wait</option>
     </select>
-    <input class="actionValue" placeholder="Value (for input/select)" style="display:none; min-width: 100px;">
-    <input class="waitTime" type="number" placeholder="Wait time (ms)" min="0" style="display:none; width: 90px;">
+    <input class="actionValue" placeholder="Value (for input/select)" style="display:none; min-width: 75px; max-width: 85px;">
+    <input class="waitTime" type="number" placeholder="Wait (ms)" min="0" style="display:none; min-width: 60px; max-width: 70px;">
+    <input class="incrementStart" type="number" placeholder="Start #" min="0" style="display:none; min-width: 50px; max-width: 55px;">
+    <label class="random-checkbox-label" style="display:none;">
+      <input type="checkbox" class="random-checkbox" title="Use random 5-digit number instead of increment">
+      <span>Rand</span>
+    </label>
     <div class="row-actions">
       <button class="remove-field-button">-</button>
       <button class="add-field-button">+</button>
@@ -95,9 +104,15 @@ function createLocatorRow(task = {}) {
   if (task.actionValue) {
     if (task.action === "wait") {
       row.querySelector(".waitTime").value = task.actionValue;
-    } else if (task.action === "input" || task.action === "select") {
+    } else if (["input", "select", "input_increment", "random_string"].includes(task.action)) {
       row.querySelector(".actionValue").value = task.actionValue;
     }
+  }
+  if (task.incrementStart !== undefined && task.incrementStart !== "") {
+    row.querySelector(".incrementStart").value = task.incrementStart;
+  }
+  if (task.useRandom) {
+    row.querySelector(".random-checkbox").checked = true;
   }
 
   const locatorTypeDropdown = row.querySelector(".locatorType");
@@ -105,6 +120,8 @@ function createLocatorRow(task = {}) {
   const actionDropdown = row.querySelector(".action");
   const actionValueInput = row.querySelector(".actionValue");
   const waitTimeInput = row.querySelector(".waitTime");
+  const incrementStartInput = row.querySelector(".incrementStart");
+  const randomCheckboxLabel = row.querySelector(".random-checkbox-label");
 
   function toggleInputs() {
     const action = actionDropdown.value;
@@ -115,14 +132,31 @@ function createLocatorRow(task = {}) {
       locatorValueInput.style.backgroundColor = "#eee";
       actionValueInput.style.display = "none";
       waitTimeInput.style.display = "inline-block";
+      incrementStartInput.style.display = "none";
+      randomCheckboxLabel.style.display = "none";
+    } else if (action === "input_increment") {
+      locatorTypeDropdown.disabled = false;
+      locatorValueInput.disabled = false;
+      locatorValueInput.style.backgroundColor = "";
+      waitTimeInput.style.display = "none";
+      actionValueInput.style.display = "inline-block";
+      actionValueInput.placeholder = "Prefix";
+      incrementStartInput.style.display = "inline-block";
+      randomCheckboxLabel.style.display = "flex";
     } else {
       locatorTypeDropdown.disabled = false;
       locatorValueInput.disabled = false;
       locatorValueInput.style.backgroundColor = "";
       waitTimeInput.style.display = "none";
+      incrementStartInput.style.display = "none";
+      randomCheckboxLabel.style.display = "none";
 
       if (action === "input" || action === "select") {
         actionValueInput.style.display = "inline-block";
+        actionValueInput.placeholder = "Value";
+      } else if (action === "random_string") {
+        actionValueInput.style.display = "inline-block";
+        actionValueInput.placeholder = "Length (def: 5)";
       } else {
         actionValueInput.style.display = "none";
       }
@@ -214,6 +248,8 @@ function getCurrentTasks() {
     const actionEl = row.querySelector(".action");
     const actionValueEl = row.querySelector(".actionValue");
     const waitTimeEl = row.querySelector(".waitTime");
+    const incrementStartEl = row.querySelector(".incrementStart");
+    const randomCheckboxEl = row.querySelector(".random-checkbox");
 
     if (!locatorTypeEl || !locatorValueEl || !actionEl) return;
 
@@ -222,13 +258,21 @@ function getCurrentTasks() {
     const action = actionEl.value;
 
     let actionValue = "";
-    if (action === "input" || action === "select") {
+    let incrementStart = "";
+    let useRandom = false;
+
+    if (["input", "select", "input_increment", "random_string"].includes(action)) {
       actionValue = actionValueEl.value;
     } else if (action === "wait") {
       actionValue = waitTimeEl.value;
     }
 
-    tasks.push({ locatorType, locatorValue, action, actionValue });
+    if (action === "input_increment") {
+      incrementStart = incrementStartEl.value;
+      useRandom = randomCheckboxEl.checked;
+    }
+
+    tasks.push({ locatorType, locatorValue, action, actionValue, incrementStart, useRandom });
   });
   return tasks;
 }
@@ -265,22 +309,12 @@ actionBtn.onclick = async () => {
       tabId: tab.id,
     });
 
-    // Get current status to show final loop count
-    chrome.runtime.sendMessage({
-      command: "get_status",
-      tabId: tab.id,
-    }, (response) => {
-      if (response) {
-        setRunningState(false, response.currentLoop, response.totalLoops);
-      } else {
-        setRunningState(false);
-      }
-    });
-
+    setRunningState(false);
     showStatusMessage("Automation stopped", "error");
   } else {
     // Start action
-    const loop = parseInt(loopCountInput.value || "1");
+    const loopVal = parseInt(loopCountInput.value);
+    const loop = isNaN(loopVal) || loopVal < 1 ? 1 : loopVal;
     const tasks = getCurrentTasks();
 
     if (tasks.length === 0) {
@@ -303,14 +337,11 @@ actionBtn.onclick = async () => {
 
 // Listen for status updates from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.command === "status_update") {
-    const { currentLoop, totalLoops, isActive } = message;
-
-    if (isActive) {
-      setRunningState(true, currentLoop, totalLoops);
-    } else {
-      setRunningState(false, currentLoop, totalLoops);
-    }
+  if (message.command === "update_loop_status") {
+    updateLoopStatus(message.currentLoop, message.totalLoops);
+  } else if (message.command === "automation_finished") {
+    setRunningState(false, 0, 0);
+    showStatusMessage("Automation finished successfully");
   }
 });
 
@@ -318,15 +349,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function checkRunningState() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    chrome.runtime.sendMessage({
-      command: "get_status",
-      tabId: tab.id,
-    }, (response) => {
-      if (response && response.isActive) {
-        setRunningState(true, response.currentLoop, response.totalLoops);
-      } else {
-        setRunningState(false, response?.currentLoop || 0, response?.totalLoops || 0);
+    chrome.runtime.sendMessage({ command: "get_state", tabId: tab.id }, (response) => {
+      if (response?.state?.isActive) {
+        setRunningState(true, response.state.currentLoop, response.state.loop);
+        return;
       }
+      setRunningState(false);
     });
   } catch (e) {
     setRunningState(false);

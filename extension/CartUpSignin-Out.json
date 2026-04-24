@@ -1,0 +1,44 @@
+[
+  {
+    "locatorType": "xpath",
+    "locatorValue": "//a[normalize-space()='Login']",
+    "action": "click",
+    "actionValue": ""
+  },
+  {
+    "locatorType": "name",
+    "locatorValue": "email_or_phone",
+    "action": "input",
+    "actionValue": "01743304573"
+  },
+  {
+    "locatorType": "css",
+    "locatorValue": "input[placeholder='Password']",
+    "action": "input",
+    "actionValue": "Therap321#"
+  },
+  {
+    "locatorType": "css",
+    "locatorValue": "button[type='submit']",
+    "action": "click",
+    "actionValue": ""
+  },
+  {
+    "locatorType": "css",
+    "locatorValue": "span[class='whitespace-nowrap']",
+    "action": "click",
+    "actionValue": ""
+  },
+  {
+    "locatorType": "css",
+    "locatorValue": "body > section:nth-child(23) > section > div > div.no-scrollbar.sticky.top-\\[120px\\].hidden.h-fit.min-w-\\[312px\\].max-w-\\[312px\\].lg\\:block > div > div.rounded > nav > div > div > button",
+    "action": "click",
+    "actionValue": ""
+  },
+  {
+    "locatorType": "css",
+    "locatorValue": "",
+    "action": "wait",
+    "actionValue": "2000"
+  }
+]
