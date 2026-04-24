@@ -161,7 +161,7 @@ function createLocatorRow(task = {}) {
       <option value="select">Select</option>
       <option value="wait">Wait</option>
     </select>
-    <input class="actionValue"    placeholder="Value / prefix…"   style="display:none;" autocomplete="off" spellcheck="false">
+    <input class="actionValue"    placeholder="Value / prefix"   style="display:none;" autocomplete="off" spellcheck="false">
     <input class="waitTime"       type="number" placeholder="ms"  style="display:none;" min="0">
     <input class="incrementStart" type="number" placeholder="Start #" style="display:none;" min="0">
     <label class="random-checkbox-label" style="display:none;" title="Use random 5-digit number instead of increment">
@@ -208,14 +208,14 @@ function createLocatorRow(task = {}) {
       ltSel.disabled = lvInp.disabled = false;
       wtInp.style.display = "none";
       avInp.style.display = isInp.style.display = "inline-block";
-      avInp.placeholder = "Prefix…";
+      avInp.placeholder = "Prefix";
       rcLbl.style.display = "flex";
     } else {
       ltSel.disabled = lvInp.disabled = false;
       wtInp.style.display = isInp.style.display = rcLbl.style.display = "none";
       if (a === "input" || a === "select") {
         avInp.style.display = "inline-block";
-        avInp.placeholder = "Value…";
+        avInp.placeholder = "Value";
       } else if (a === "random_string") {
         avInp.style.display = "inline-block";
         avInp.placeholder = "Length (def: 5)";
