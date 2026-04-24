@@ -1,14 +1,9 @@
 let automations = {};
 
+// 🔄 RESTORE STATE: Prevents loops from breaking when the Service Worker restarts
 chrome.storage.local.get(["automations"], (result) => {
   if (result.automations) {
     automations = result.automations;
-    Object.keys(automations).forEach(tabId => {
-      if (automations[tabId]) {
-        automations[tabId].processing = false;
-      }
-    });
-    saveState();
   }
 });
 
@@ -16,251 +11,321 @@ function saveState() {
   chrome.storage.local.set({ automations });
 }
 
-function broadcastStatus(tabId) {
-  const state = automations[tabId];
-  if (!state) return;
+function generateRandomString(length = 8) {
+  const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let retVal = "";
+  for (let i = 0, n = charset.length; i < length; ++i) {
+    retVal += charset.charAt(Math.floor(Math.random() * n));
+  }
+  return retVal;
+}
 
-  // currentLoop is always 1-indexed for display:
-  // - When running: which loop is currently executing (1 to loop)
-  // - When stopped: how many loops were completed (0 to loop)
-  const displayLoop = state.isActive ? state.currentLoop : state.completedLoops;
-
+// Helper to send loop status update to popup
+function sendLoopStatusUpdate(tabId, currentLoop, totalLoops) {
   chrome.runtime.sendMessage({
-    command: "status_update",
+    command: "update_loop_status",
     tabId: tabId,
-    currentLoop: displayLoop,
-    totalLoops: state.loop,
-    isActive: state.isActive
-  }).catch(() => { });
+    currentLoop: currentLoop,
+    totalLoops: totalLoops
+  });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+
+  // 🔴 STOP
   if (message.command === "stop") {
     const tabId = message.tabId || sender.tab?.id;
     if (tabId && automations[tabId]) {
       automations[tabId].isActive = false;
       automations[tabId].processing = false;
       saveState();
-      broadcastStatus(tabId);
-      chrome.notifications.create({
-        type: "basic",
-        iconUrl: "icon128.png",
-        title: "Automation Stopped",
-        message: "Automation has been stopped."
-      });
     }
     sendResponse({ success: true });
     return true;
   }
 
+  // ❓ GET STATE (for popup initialization)
+  if (message.command === "get_state") {
+    const tabId = message.tabId;
+    if (tabId && automations[tabId]) {
+      sendResponse({ state: automations[tabId] });
+    } else {
+      sendResponse({ state: null });
+    }
+    return true;
+  }
+
+  // 🟢 START
   if (message.command === "start") {
     const tabId = message.tabId;
+
+    const tasks = message.tasks.map(task => {
+      if (task.action === "input_increment") {
+        return {
+          ...task,
+          _currentIncrement: parseInt(task.incrementStart, 10) || 1
+        };
+      }
+      return task;
+    });
+
     automations[tabId] = {
-      tasks: message.tasks,
-      loop: message.loop,
-      currentLoop: 1,      // 1-indexed: which loop is running now
-      completedLoops: 0,   // how many loops have finished
-      taskIndex: 0,        // which task we're on (0-indexed)
+      tasks,
+      loop: Math.max(1, parseInt(message.loop, 10) || 1),
+      currentLoop: 1,
+      taskIndex: 0,
       isActive: true,
-      tabId: tabId,
       processing: false
     };
+
     saveState();
-    broadcastStatus(tabId);
+
+    // Send initial loop status
+    sendLoopStatusUpdate(tabId, automations[tabId].currentLoop, automations[tabId].loop);
+
     executeNextStep(tabId);
     sendResponse({ success: true });
     return true;
   }
-
-  if (message.command === "get_status") {
-    const tabId = message.tabId;
-    const state = automations[tabId];
-    if (state && state.isActive && state.processing) {
-      state.processing = false;
-      saveState();
-    }
-    const isActive = !!(state && state.isActive);
-    const displayLoop = isActive ? state?.currentLoop : state?.completedLoops;
-    sendResponse({
-      isActive,
-      currentLoop: displayLoop ?? 0,
-      totalLoops: state?.loop || 0,
-      currentTaskIndex: state?.taskIndex || 0,
-      totalTasks: state?.tasks?.length || 0
-    });
-    return true;
-  }
 });
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (automations[tabId] && changeInfo.status === "loading") {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (!automations[tabId]) return;
+  
+  // When page starts loading, ensure we stop current processing 
+  // to allow the "complete" status to trigger the next step.
+  if (changeInfo.status === "complete" && automations[tabId].isActive) {
     automations[tabId].processing = false;
     saveState();
-  }
-
-  if (changeInfo.status === "complete" && automations[tabId]?.isActive) {
-    if (automations[tabId].processing) {
-      automations[tabId].processing = false;
-      saveState();
-    }
-    setTimeout(() => {
-      executeNextStep(tabId);
-    }, 1000);
+    setTimeout(() => executeNextStep(tabId), 1500); // 1.5s delay to let dynamic content load
   }
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => {
-  if (automations[tabId]) {
-    delete automations[tabId];
-    saveState();
-  }
-});
-
+// 🔥 MAIN EXECUTOR
 async function executeNextStep(tabId) {
   const state = automations[tabId];
   if (!state || !state.isActive) return;
 
-  if (state.processing) {
-    state.processing = false;
-    saveState();
-  }
-
+  // If already processing, don't start another instance
   if (state.processing) return;
 
-  // Check if all tasks in current loop are done
+  // Check if the tab is still loading
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.status === "loading") {
+      console.log("⏳ Tab is loading, waiting for completion...");
+      return; 
+    }
+  } catch (e) {
+    return; // Tab might be closed
+  }
+
+  // Check if we need to advance to next loop
   if (state.taskIndex >= state.tasks.length) {
-    // Current loop is complete
-    state.completedLoops = state.currentLoop;
     state.taskIndex = 0;
     state.currentLoop++;
+    saveState();
 
-    // Check if we've completed all loops
+    // Send immediate loop status update when a new loop starts
+    sendLoopStatusUpdate(tabId, state.currentLoop, state.loop);
+
     if (state.currentLoop > state.loop) {
       state.isActive = false;
       state.processing = false;
       saveState();
-      broadcastStatus(tabId);
+
+      // Send final status update before finishing
+      sendLoopStatusUpdate(tabId, state.currentLoop - 1, state.loop);
+
       chrome.notifications.create({
-        type: "basic",
-        iconUrl: "icon128.png",
-        title: "Automation Complete",
-        message: `Finished ${state.loop} loops.`
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icon128.png'),
+        title: 'Automation Finished',
+        message: `Completed ${state.loop} loops successfully.`,
+        priority: 2
       });
+      chrome.runtime.sendMessage({ command: "automation_finished", tabId: tabId });
       return;
     }
-
-    saveState();
-    broadcastStatus(tabId);
   }
 
   state.processing = true;
   const taskIndex = state.taskIndex;
-  const task = state.tasks[taskIndex];
+  let task = state.tasks[taskIndex];
 
-  state.taskIndex++;
-  saveState();
-  broadcastStatus(tabId);
+  // ✅ HANDLE RANDOM STRING ACTION OR USE RANDOM CHECKBOX
+  if (task.action === "random_string" || (task.action === "input" && task.useRandom)) {
+    const requestedLength = parseInt(task.actionValue, 10);
+    const finalLength = isNaN(requestedLength) || requestedLength <= 0 ? 5 : requestedLength;
+    
+    task = {
+      ...task,
+      action: "input",
+      actionValue: generateRandomString(finalLength)
+    };
+  } else if (task.action === "input_increment" && task.useRandom) {
+    const prefix = task.actionValue || "";
+    const randomNum = Math.floor(10000 + Math.random() * 90000);
+    task = {
+      ...task,
+      action: "input",
+      actionValue: prefix + randomNum
+    };
+  } 
+  // ✅ HANDLE INCREMENT (only if not random)
+  else if (task.action === "input_increment") {
+    const prefix = task.actionValue || "";
+    const num = task._currentIncrement++;
+
+    state.tasks[taskIndex]._currentIncrement = task._currentIncrement;
+
+    task = {
+      ...task,
+      action: "input",
+      actionValue: prefix + num
+    };
+  }
 
   try {
     await chrome.scripting.executeScript({
-      target: { tabId: tabId },
+      target: { tabId },
       args: [task],
-      func: (task) => {
-        if (task.action === "wait") {
-          return { status: "wait", time: parseInt(task.actionValue, 10) || 1000 };
+      func: async (task) => {
+        // 🔍 WAIT FOR ELEMENT
+        const waitForElement = (type, value, timeout = 6000) => {
+          return new Promise(resolve => {
+            const start = Date.now();
+
+            const check = () => {
+              let el = null;
+
+              try {
+                switch (type) {
+                  case "css":
+                    el = document.querySelector(value);
+                    break;
+                  case "id":
+                    el = document.getElementById(value.replace("#", ""));
+                    break;
+                  case "name":
+                    el = document.getElementsByName(value)[0];
+                    break;
+                  case "xpath":
+                    el = document.evaluate(
+                      value,
+                      document,
+                      null,
+                      XPathResult.FIRST_ORDERED_NODE_TYPE,
+                      null
+                    ).singleNodeValue;
+                    break;
+                }
+              } catch (e) {}
+
+              if (el && el.offsetParent !== null) {
+                return resolve(el);
+              }
+
+              if (Date.now() - start > timeout) {
+                return resolve(null);
+              }
+
+              setTimeout(check, 100);
+            };
+
+            check();
+          });
+        };
+
+        let el = null;
+        if (task.action !== "wait") {
+          el = await waitForElement(task.locatorType, task.locatorValue);
+          if (!el) {
+            console.error("❌ Element not found:", task.locatorValue);
+            return;
+          }
         }
 
-        const getElement = (type, value) => {
-          if (!value) return null;
-          try {
-            switch (type) {
-              case "css": return document.querySelector(value);
-              case "id": return document.getElementById(value.replace(/^#/, ""));
-              case "name": return document.getElementsByName(value)[0];
-              case "xpath":
-                return document.evaluate(value, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-              default: return null;
-            }
-          } catch (e) { return null; }
-        };
-
-        const simulateTyping = (element, value) => {
+        // 🔥 STRONG INPUT SETTER
+        const setValue = (element, value) => {
           element.focus();
-          element.value = "";
+
+          if (element.tagName === "INPUT" || element.tagName === "TEXTAREA") {
+            const prototype = element.tagName === "TEXTAREA" 
+              ? window.HTMLTextAreaElement.prototype 
+              : window.HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(prototype, "value").set;
+            setter.call(element, value);
+          } else {
+            element.value = value;
+          }
+
           element.dispatchEvent(new Event("input", { bubbles: true }));
-          for (const char of value) {
-            element.value += char;
-            element.dispatchEvent(new InputEvent("input", { bubbles: true, data: char }));
-          }
           element.dispatchEvent(new Event("change", { bubbles: true }));
+          element.dispatchEvent(new Event("blur", { bubbles: true }));
         };
 
-        const generateRandomString = () => {
-          const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-          let result = "";
-          for (let i = 0; i < 5; i++) {
-            result += chars.charAt(Math.floor(Math.random() * chars.length));
-          }
-          return result;
-        };
-
-        const el = getElement(task.locatorType, task.locatorValue);
-
-        console.log("Executing task:", task.action, task.locatorValue);
+        console.log("👉 Running task:", task);
 
         switch (task.action) {
+
           case "click":
-            if (el) {
-              el.click();
-              return { status: "clicked" };
-            }
-            return { status: "element_not_found" };
-          case "input":
-            if (el) {
-              simulateTyping(el, task.actionValue);
-              return { status: "input_done" };
-            }
-            return { status: "element_not_found" };
-          case "random_string":
-            if (el) {
-              simulateTyping(el, generateRandomString());
-              return { status: "input_done" };
-            }
-            return { status: "element_not_found" };
+            el.click();
+            break;
+
           case "select":
-            if (el) {
-              el.value = task.actionValue;
+          case "input":
+            if (el.tagName === "SELECT") {
+              el.focus();
+              let found = false;
+              for (let i = 0; i < el.options.length; i++) {
+                if (el.options[i].value == task.actionValue || el.options[i].text == task.actionValue) {
+                  el.selectedIndex = i;
+                  found = true;
+                  break;
+                }
+              }
+              if (!found) el.value = task.actionValue;
+              el.dispatchEvent(new Event("input", { bubbles: true }));
               el.dispatchEvent(new Event("change", { bubbles: true }));
-              return { status: "select_done" };
+              el.dispatchEvent(new Event("blur", { bubbles: true }));
+            } else {
+              setValue(el, task.actionValue);
+
+              setTimeout(() => {
+                if (el.value !== task.actionValue) {
+                  setValue(el, task.actionValue);
+                }
+              }, 300);
             }
-            return { status: "element_not_found" };
-          default:
-            return { status: "unknown_action" };
+            break;
+
+          case "wait":
+            await new Promise(r =>
+              setTimeout(r, parseInt(task.actionValue) || 1000)
+            );
+            break;
         }
       }
-    }).then(async (results) => {
-      const result = results[0].result;
-
-      if (result.status === "wait") {
-        await new Promise(r => setTimeout(r, result.time));
-      } else {
-        await new Promise(r => setTimeout(r, 800));
-      }
-
-      state.processing = false;
-      saveState();
-
-      chrome.tabs.get(tabId, (tab) => {
-        if (!chrome.runtime.lastError && tab.status === "complete" && state.isActive) {
-          executeNextStep(tabId);
-        }
-      });
     });
+
   } catch (err) {
-    console.error("Script execution error:", err);
-    if (automations[tabId]) {
-      automations[tabId].processing = false;
-      saveState();
+    // If context is invalidated or port closed during a click, it's usually navigation.
+    // We should move to the next task regardless.
+    if (task.action !== "click") {
+      console.error("❌ Task failed:", err.message);
+      state.processing = false;
+      return; 
     }
+    console.warn("⚠️ Navigation detected during click.");
   }
+
+  state.taskIndex++;
+  state.processing = false;
+  saveState();
+
+  // Send status update after each task
+  sendLoopStatusUpdate(tabId, state.currentLoop, state.loop);
+
+  setTimeout(() => executeNextStep(tabId), 500);
 }
