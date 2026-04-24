@@ -1,6 +1,6 @@
 let automations = {};
 
-// 🔄 RESTORE STATE: Prevents loops from breaking when the Service Worker restarts
+// RESTORE STATE: Prevents loops from breaking when the Service Worker restarts
 chrome.storage.local.get(["automations"], (result) => {
   if (result.automations) {
     automations = result.automations;
@@ -32,7 +32,7 @@ function sendLoopStatusUpdate(tabId, currentLoop, totalLoops) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
-  // 🔴 STOP
+  // STOP
   if (message.command === "stop") {
     const tabId = message.tabId || sender.tab?.id;
     if (tabId && automations[tabId]) {
@@ -44,7 +44,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // ❓ GET STATE (for popup initialization)
+  // GET STATE (for popup initialization)
   if (message.command === "get_state") {
     const tabId = message.tabId;
     if (tabId && automations[tabId]) {
@@ -55,7 +55,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // 🟢 START
+  // START
   if (message.command === "start") {
     const tabId = message.tabId;
 
@@ -101,7 +101,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
 });
 
-// 🔥 MAIN EXECUTOR
+// MAIN EXECUTOR
 async function executeNextStep(tabId) {
   const state = automations[tabId];
   if (!state || !state.isActive) return;
@@ -113,7 +113,7 @@ async function executeNextStep(tabId) {
   try {
     const tab = await chrome.tabs.get(tabId);
     if (tab.status === "loading") {
-      console.log("⏳ Tab is loading, waiting for completion...");
+      console.log("Tab is loading, waiting for completion...");
       return; 
     }
   } catch (e) {
@@ -153,7 +153,7 @@ async function executeNextStep(tabId) {
   const taskIndex = state.taskIndex;
   let task = state.tasks[taskIndex];
 
-  // ✅ HANDLE RANDOM STRING ACTION OR USE RANDOM CHECKBOX
+  // HANDLE RANDOM STRING ACTION OR USE RANDOM CHECKBOX
   if (task.action === "random_string" || (task.action === "input" && task.useRandom)) {
     const requestedLength = parseInt(task.actionValue, 10);
     const finalLength = isNaN(requestedLength) || requestedLength <= 0 ? 5 : requestedLength;
@@ -172,7 +172,7 @@ async function executeNextStep(tabId) {
       actionValue: prefix + randomNum
     };
   } 
-  // ✅ HANDLE INCREMENT (only if not random)
+  // HANDLE INCREMENT (only if not random)
   else if (task.action === "input_increment") {
     const prefix = task.actionValue || "";
     const num = task._currentIncrement++;
@@ -191,7 +191,7 @@ async function executeNextStep(tabId) {
       target: { tabId },
       args: [task],
       func: async (task) => {
-        // 🔍 WAIT FOR ELEMENT
+        // WAIT FOR ELEMENT
         const waitForElement = (type, value, timeout = 6000) => {
           return new Promise(resolve => {
             const start = Date.now();
@@ -241,12 +241,12 @@ async function executeNextStep(tabId) {
         if (task.action !== "wait") {
           el = await waitForElement(task.locatorType, task.locatorValue);
           if (!el) {
-            console.error("❌ Element not found:", task.locatorValue);
+            console.error("Element not found:", task.locatorValue);
             return;
           }
         }
 
-        // 🔥 STRONG INPUT SETTER
+        // STRONG INPUT SETTER
         const setValue = (element, value) => {
           element.focus();
 
@@ -265,7 +265,7 @@ async function executeNextStep(tabId) {
           element.dispatchEvent(new Event("blur", { bubbles: true }));
         };
 
-        console.log("👉 Running task:", task);
+        console.log("Running task:", task);
 
         switch (task.action) {
 
@@ -313,11 +313,11 @@ async function executeNextStep(tabId) {
     // If context is invalidated or port closed during a click, it's usually navigation.
     // We should move to the next task regardless.
     if (task.action !== "click") {
-      console.error("❌ Task failed:", err.message);
+      console.error("Task failed:", err.message);
       state.processing = false;
       return; 
     }
-    console.warn("⚠️ Navigation detected during click.");
+    console.warn("Navigation detected during click.");
   }
 
   state.taskIndex++;
