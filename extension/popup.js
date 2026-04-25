@@ -1,350 +1,435 @@
+/* ═══════════════════════════════════════════════
+   LOCATOR ACTION AUTOMATOR — popup.js
+   ═══════════════════════════════════════════════ */
+
 let fieldCount = 0;
+
 const locatorSection = document.getElementById("locator-section");
+const emptyHint = document.getElementById("empty-hint");
 const resetButton = document.getElementById("reset");
 const importBtn = document.getElementById("import");
 const exportBtn = document.getElementById("export");
+const addFirstBtn = document.getElementById("add-first");
 const fileInput = document.getElementById("file-input");
 const statusMessage = document.getElementById("status-message");
 const actionBtn = document.getElementById("action-btn");
+const actionBtnLabel = document.getElementById("action-btn-label");
 const loopStatusEl = document.getElementById("loop-status");
 const loopCountInput = document.getElementById("loop-count");
+const stepCountPill = document.getElementById("step-count-pill");
+const progressBar = document.getElementById("progress-bar");
 
-// Initialize with one empty row
+// ── Action → colour map ────────────────────────────────────────────────────────
+const ACTION_COLORS = {
+  click: "#3ecf8e",   // green
+  input: "#5c72f0",   // accent blue
+  random_string: "#a060f0",   // purple
+  input_increment: "#40c4d8",   // cyan
+  select: "#f0a040",   // amber
+  wait: "#f06060",   // red
+};
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 addLocatorRow();
+updateEmptyHint();
 
-function showStatusMessage(message, type = 'success') {
-  statusMessage.textContent = message;
-  statusMessage.className = `status-message ${type}`;
-  statusMessage.style.display = 'block';
-
-  // Hide the message after 3 seconds
-  setTimeout(() => {
-    statusMessage.style.display = 'none';
-  }, 3000);
+// ══════════════════════════════════════════════
+//  STEP COUNT + EMPTY HINT
+// ══════════════════════════════════════════════
+function updateEmptyHint() {
+  const count = locatorSection.querySelectorAll(".row").length;
+  stepCountPill.textContent = `${count} Step${count !== 1 ? "s" : ""}`;
+  emptyHint.style.display = count === 0 ? "block" : "none";
 }
 
-function updateLoopStatus(currentLoop, totalLoops) {
-  if (totalLoops === 0) {
-    loopStatusEl.textContent = "Loop: 0 / 0";
-    loopStatusEl.classList.remove('running');
+// ══════════════════════════════════════════════
+//  PROGRESS BAR
+// ══════════════════════════════════════════════
+function setProgress(current, total) {
+  progressBar.classList.remove("indeterminate");
+  if (total === 0) {
+    progressBar.style.width = "0%";
     return;
   }
+  progressBar.style.width = Math.min(100, Math.round((current / total) * 100)) + "%";
+}
 
-  loopStatusEl.textContent = `Loop: ${currentLoop} / ${totalLoops}`;
-
-  if (currentLoop > 0 && currentLoop <= totalLoops) {
-    loopStatusEl.classList.add('running');
+function setProgressIndeterminate(on) {
+  if (on) {
+    progressBar.classList.add("indeterminate");
+    progressBar.style.width = "";
   } else {
-    loopStatusEl.classList.remove('running');
+    progressBar.classList.remove("indeterminate");
   }
 }
 
+// ══════════════════════════════════════════════
+//  STATUS MESSAGE
+// ══════════════════════════════════════════════
+function showStatus(message, type = "success") {
+  statusMessage.textContent = message;
+  statusMessage.className = type;   // class drives the look
+  statusMessage.style.display = "block";
+  clearTimeout(statusMessage._t);
+  statusMessage._t = setTimeout(() => {
+    statusMessage.style.display = "none";
+  }, 3800);
+}
+
+// ══════════════════════════════════════════════
+//  LOOP STATUS
+// ══════════════════════════════════════════════
+function updateLoopStatus(currentLoop, totalLoops) {
+  if (totalLoops === 0) {
+    loopStatusEl.textContent = "0/0";
+    loopStatusEl.classList.remove("running");
+    setProgress(0, 0);
+    return;
+  }
+  const disp = Math.min(currentLoop, totalLoops);
+  loopStatusEl.textContent = `${disp}/${totalLoops}`;
+  if (disp > 0 && disp <= totalLoops) {
+    loopStatusEl.classList.add("running");
+    setProgress(disp, totalLoops);
+  } else {
+    loopStatusEl.classList.remove("running");
+    setProgress(0, totalLoops);
+  }
+}
+
+// ══════════════════════════════════════════════
+//  RUNNING STATE
+// ══════════════════════════════════════════════
 function setRunningState(running, currentLoop = 0, totalLoops = 0) {
   if (running) {
-    actionBtn.textContent = "Stop";
-    actionBtn.classList.remove("start-state");
-    actionBtn.classList.add("stop-state");
+    actionBtnLabel.textContent = "X Stop";
+    actionBtn.classList.replace("start-state", "stop-state");
     loopCountInput.disabled = true;
     updateLoopStatus(currentLoop, totalLoops);
-    showStatusMessage('Automation running...', 'running');
+    setProgressIndeterminate(totalLoops === 0);
+    showStatus(">> Automation is running", "running");
   } else {
-    actionBtn.textContent = "Start";
-    actionBtn.classList.remove("stop-state");
-    actionBtn.classList.add("start-state");
+    actionBtnLabel.textContent = "> Start";
+    actionBtn.classList.replace("stop-state", "start-state");
     loopCountInput.disabled = false;
     updateLoopStatus(currentLoop, totalLoops);
+    setProgressIndeterminate(false);
   }
 }
 
+// ══════════════════════════════════════════════
+//  RE-NUMBER ROWS
+// ══════════════════════════════════════════════
+function renumberRows() {
+  locatorSection.querySelectorAll(".row").forEach((row, i) => {
+    const el = row.querySelector(".row-num");
+    if (el) el.textContent = String(i + 1).padStart(2, "0");
+  });
+  updateEmptyHint();
+}
+
+// ══════════════════════════════════════════════
+//  UPDATE ACTION DOT COLOR
+// ══════════════════════════════════════════════
+function updateActionDot(row) {
+  const action = row.querySelector(".action")?.value;
+  const dot = row.querySelector(".action-dot");
+  if (dot) dot.style.background = ACTION_COLORS[action] || "#555";
+}
+
+// ══════════════════════════════════════════════
+//  CREATE ROW
+// ══════════════════════════════════════════════
 function createLocatorRow(task = {}) {
   const row = document.createElement("div");
   row.className = "row";
   row.innerHTML = `
+    <span class="row-num">01</span>
+    <span class="action-dot" title="Action type indicator"></span>
     <select class="locatorType">
       <option value="css">CSS</option>
       <option value="id">ID</option>
       <option value="name">Name</option>
       <option value="xpath">XPath</option>
     </select>
-    <input class="locatorValue" placeholder="Locator">
+    <input class="locatorValue" placeholder="Locator value" autocomplete="off" spellcheck="false">
     <select class="action">
       <option value="click">Click</option>
       <option value="input">Input</option>
       <option value="random_string">Random String</option>
+      <option value="input_increment">Input + Increment</option>
       <option value="select">Select</option>
       <option value="wait">Wait</option>
     </select>
-    <input class="actionValue" placeholder="Value (for input/select)" style="display:none; min-width: 100px;">
-    <input class="waitTime" type="number" placeholder="Wait time (ms)" min="0" style="display:none; width: 90px;">
+    <input class="actionValue"    placeholder="Value / prefix"   style="display:none;" autocomplete="off" spellcheck="false">
+    <input class="waitTime"       type="number" placeholder="ms"  style="display:none;" min="0">
+    <input class="incrementStart" type="number" placeholder="Start #" style="display:none;" min="0">
+    <label class="random-checkbox-label" style="display:none;" title="Use random 5-digit number instead of increment">
+      <input type="checkbox" class="random-checkbox"> Rand
+    </label>
     <div class="row-actions">
-      <button class="remove-field-button">-</button>
-      <button class="add-field-button">+</button>
+      <button class="row-btn btn-remove remove-field-button" title="Remove this step">-</button>
+      <button class="row-btn btn-add    add-field-button"    title="Insert step below">+</button>
     </div>
   `;
 
-  // Set values if task is provided
-  if (task.locatorType) {
-    row.querySelector(".locatorType").value = task.locatorType;
-  }
-  if (task.locatorValue) {
-    row.querySelector(".locatorValue").value = task.locatorValue;
-  }
-  if (task.action) {
-    row.querySelector(".action").value = task.action;
-  }
+  /* ── restore values ── */
+  if (task.locatorType) row.querySelector(".locatorType").value = task.locatorType;
+  if (task.locatorValue) row.querySelector(".locatorValue").value = task.locatorValue;
+  if (task.action) row.querySelector(".action").value = task.action;
   if (task.actionValue) {
-    if (task.action === "wait") {
+    if (task.action === "wait")
       row.querySelector(".waitTime").value = task.actionValue;
-    } else if (task.action === "input" || task.action === "select") {
+    else if (["input", "select", "input_increment", "random_string"].includes(task.action))
       row.querySelector(".actionValue").value = task.actionValue;
-    }
   }
+  if (task.incrementStart !== undefined && task.incrementStart !== "")
+    row.querySelector(".incrementStart").value = task.incrementStart;
+  if (task.useRandom)
+    row.querySelector(".random-checkbox").checked = true;
 
-  const locatorTypeDropdown = row.querySelector(".locatorType");
-  const locatorValueInput = row.querySelector(".locatorValue");
-  const actionDropdown = row.querySelector(".action");
-  const actionValueInput = row.querySelector(".actionValue");
-  const waitTimeInput = row.querySelector(".waitTime");
+  /* ── refs ── */
+  const ltSel = row.querySelector(".locatorType");
+  const lvInp = row.querySelector(".locatorValue");
+  const actSel = row.querySelector(".action");
+  const avInp = row.querySelector(".actionValue");
+  const wtInp = row.querySelector(".waitTime");
+  const isInp = row.querySelector(".incrementStart");
+  const rcLbl = row.querySelector(".random-checkbox-label");
 
+  /* ── toggle visible fields ── */
   function toggleInputs() {
-    const action = actionDropdown.value;
-
-    if (action === "wait") {
-      locatorTypeDropdown.disabled = true;
-      locatorValueInput.disabled = true;
-      locatorValueInput.style.backgroundColor = "#eee";
-      actionValueInput.style.display = "none";
-      waitTimeInput.style.display = "inline-block";
+    const a = actSel.value;
+    if (a === "wait") {
+      ltSel.disabled = lvInp.disabled = true;
+      avInp.style.display = isInp.style.display = rcLbl.style.display = "none";
+      wtInp.style.display = "inline-block";
+    } else if (a === "input_increment") {
+      ltSel.disabled = lvInp.disabled = false;
+      wtInp.style.display = "none";
+      avInp.style.display = isInp.style.display = "inline-block";
+      avInp.placeholder = "Prefix";
+      rcLbl.style.display = "flex";
     } else {
-      locatorTypeDropdown.disabled = false;
-      locatorValueInput.disabled = false;
-      locatorValueInput.style.backgroundColor = "";
-      waitTimeInput.style.display = "none";
-
-      if (action === "input" || action === "select") {
-        actionValueInput.style.display = "inline-block";
+      ltSel.disabled = lvInp.disabled = false;
+      wtInp.style.display = isInp.style.display = rcLbl.style.display = "none";
+      if (a === "input" || a === "select") {
+        avInp.style.display = "inline-block";
+        avInp.placeholder = "Value";
+      } else if (a === "random_string") {
+        avInp.style.display = "inline-block";
+        avInp.placeholder = "Length (def: 5)";
       } else {
-        actionValueInput.style.display = "none";
+        avInp.style.display = "none";
       }
     }
+    updateActionDot(row);
   }
 
   toggleInputs();
-  actionDropdown.addEventListener("change", toggleInputs);
-
+  actSel.addEventListener("change", toggleInputs);
   return row;
 }
 
+// ══════════════════════════════════════════════
+//  ADD ROW
+// ══════════════════════════════════════════════
 function addLocatorRow(task = null, referenceRow = null) {
   const row = createLocatorRow(task || {});
 
-  // Add button functionality
-  row.querySelector(".add-field-button").addEventListener("click", (e) => {
+  row.querySelector(".add-field-button").addEventListener("click", e => {
     e.stopPropagation();
     addLocatorRow(null, row);
   });
 
-  // Remove button functionality
-  row.querySelector(".remove-field-button").addEventListener("click", (e) => {
+  row.querySelector(".remove-field-button").addEventListener("click", e => {
     e.stopPropagation();
-    if (locatorSection.children.length > 1) {
-      locatorSection.removeChild(row);
+    if (locatorSection.querySelectorAll(".row").length <= 1) return;
+    row.classList.add("row-removing");
+    setTimeout(() => {
+      row.remove();
       fieldCount--;
-    }
+      renumberRows();
+    }, 150);
   });
 
-  if (referenceRow) {
-    referenceRow.after(row);
-  } else {
-    locatorSection.appendChild(row);
-  }
+  if (referenceRow) referenceRow.after(row);
+  else locatorSection.insertBefore(row, emptyHint);
 
   fieldCount++;
+  renumberRows();
 }
 
-// Import functionality
-importBtn.addEventListener("click", () => fileInput.click());
-
-fileInput.addEventListener("change", async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  try {
-    const text = await file.text();
-    const tasks = JSON.parse(text);
-    loadTasks(tasks);
-    showStatusMessage(`Successfully imported ${tasks.length} task(s)`);
-  } catch (error) {
-    console.error("Error importing file:", error);
-    showStatusMessage("Error importing file. Please check the file format.", "error");
-  }
-
-  fileInput.value = '';
-});
-
-// Export functionality
-exportBtn.addEventListener("click", () => {
-  const tasks = getCurrentTasks();
-  if (tasks.length === 0) {
-    showStatusMessage("No tasks to export!", "error");
-    return;
-  }
-
-  const jsonData = JSON.stringify(tasks, null, 2);
-  const blob = new Blob([jsonData], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "automation-tasks.json";
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 0);
-
-  showStatusMessage(`Successfully exported ${tasks.length} task(s)`);
-});
-
+// ══════════════════════════════════════════════
+//  COLLECT TASKS
+// ══════════════════════════════════════════════
 function getCurrentTasks() {
   const tasks = [];
-  document.querySelectorAll(".row").forEach((row) => {
-    const locatorTypeEl = row.querySelector(".locatorType");
-    const locatorValueEl = row.querySelector(".locatorValue");
-    const actionEl = row.querySelector(".action");
-    const actionValueEl = row.querySelector(".actionValue");
-    const waitTimeEl = row.querySelector(".waitTime");
+  locatorSection.querySelectorAll(".row").forEach(row => {
+    const ltEl = row.querySelector(".locatorType");
+    const lvEl = row.querySelector(".locatorValue");
+    const aEl = row.querySelector(".action");
+    const avEl = row.querySelector(".actionValue");
+    const wtEl = row.querySelector(".waitTime");
+    const isEl = row.querySelector(".incrementStart");
+    const rcEl = row.querySelector(".random-checkbox");
+    if (!ltEl || !lvEl || !aEl) return;
 
-    if (!locatorTypeEl || !locatorValueEl || !actionEl) return;
+    const action = aEl.value;
+    let actionValue = "", incrementStart = "", useRandom = false;
 
-    const locatorType = locatorTypeEl.value;
-    const locatorValue = locatorValueEl.value;
-    const action = actionEl.value;
+    if (["input", "select", "input_increment", "random_string"].includes(action))
+      actionValue = avEl.value;
+    else if (action === "wait")
+      actionValue = wtEl.value;
 
-    let actionValue = "";
-    if (action === "input" || action === "select") {
-      actionValue = actionValueEl.value;
-    } else if (action === "wait") {
-      actionValue = waitTimeEl.value;
+    if (action === "input_increment") {
+      incrementStart = isEl.value;
+      useRandom = rcEl.checked;
     }
 
-    tasks.push({ locatorType, locatorValue, action, actionValue });
+    tasks.push({
+      locatorType: ltEl.value,
+      locatorValue: lvEl.value,
+      action,
+      actionValue,
+      incrementStart,
+      useRandom
+    });
   });
   return tasks;
 }
 
+// ══════════════════════════════════════════════
+//  LOAD TASKS
+// ══════════════════════════════════════════════
 function loadTasks(tasks) {
-  locatorSection.innerHTML = "";
+  locatorSection.querySelectorAll(".row").forEach(r => r.remove());
   fieldCount = 0;
-
-  tasks.forEach(task => addLocatorRow(task));
-
+  tasks.forEach(t => addLocatorRow(t));
   if (tasks.length === 0) addLocatorRow();
 }
 
-// Reset functionality
+// ══════════════════════════════════════════════
+//  IMPORT
+// ══════════════════════════════════════════════
+importBtn.addEventListener("click", () => fileInput.click());
+
+fileInput.addEventListener("change", async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const tasks = JSON.parse(await file.text());
+    loadTasks(tasks);
+    showStatus(`Imported ${tasks.length} step(s) from "${file.name}"`);
+  } catch {
+    showStatus("Import failed — invalid JSON format.", "error");
+  }
+  fileInput.value = "";
+});
+
+// ══════════════════════════════════════════════
+//  EXPORT
+// ══════════════════════════════════════════════
+exportBtn.addEventListener("click", () => {
+  const tasks = getCurrentTasks();
+  if (!tasks.length) { showStatus("No steps to export.", "error"); return; }
+  const blob = new Blob([JSON.stringify(tasks, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement("a"), { href: url, download: "automation-tasks.json" });
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+  showStatus(`Exported ${tasks.length} step(s)`);
+});
+
+// ══════════════════════════════════════════════
+//  ADD FIRST / RESET
+// ══════════════════════════════════════════════
+addFirstBtn.addEventListener("click", () => addLocatorRow());
+
 resetButton.addEventListener("click", () => {
-  locatorSection.innerHTML = "";
+  locatorSection.querySelectorAll(".row").forEach(r => r.remove());
   fieldCount = 0;
   addLocatorRow();
   loopCountInput.value = "";
   updateLoopStatus(0, 0);
-  showStatusMessage("UI reset successfully");
+  setProgress(0, 0);
+  showStatus("Workspace cleared!");
 });
 
-// Single action button handler (Start / Stop toggle)
-actionBtn.onclick = async () => {
+// ══════════════════════════════════════════════
+//  START / STOP
+// ══════════════════════════════════════════════
+async function handleStartStop() {
   const isRunning = actionBtn.classList.contains("stop-state");
 
   if (isRunning) {
-    // Stop action
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    chrome.runtime.sendMessage({ command: "stop", tabId: tab.id });
+    setRunningState(false);
+    setProgress(0, 0);
+    showStatus("X Automation stopped!", "error");
+  } else {
+    const loopVal = parseInt(loopCountInput.value);
+    const loop = isNaN(loopVal) || loopVal < 1 ? 1 : loopVal;
+    const tasks = getCurrentTasks();
+    if (!tasks.length) { showStatus("Add at least one step first.", "error"); return; }
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    setRunningState(true, 1, loop);
+    chrome.runtime.sendMessage({ command: "start", tabId: tab.id, tasks, loop });
+  }
+}
 
-    chrome.runtime.sendMessage({
-      command: "stop",
-      tabId: tab.id,
-    });
+actionBtn.addEventListener("click", handleStartStop);
 
-    // Get current status to show final loop count
-    chrome.runtime.sendMessage({
-      command: "get_status",
-      tabId: tab.id,
-    }, (response) => {
-      if (response) {
-        setRunningState(false, response.currentLoop, response.totalLoops);
+// Keyboard shortcut: Ctrl+Enter
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+    e.preventDefault();
+    handleStartStop();
+  }
+});
+
+// ══════════════════════════════════════════════
+//  BACKGROUND MESSAGES
+// ══════════════════════════════════════════════
+chrome.runtime.onMessage.addListener(msg => {
+  if (msg.command === "update_loop_status") {
+    updateLoopStatus(msg.currentLoop, msg.totalLoops);
+  } else if (msg.command === "automation_finished") {
+    setRunningState(false, 0, 0);
+    setProgress(100, 100);
+    showStatus(">> Automation completed successfully!");
+    setTimeout(() => setProgress(0, 0), 2000);
+  }
+});
+
+// ══════════════════════════════════════════════
+//  RESTORE RUNNING STATE ON OPEN
+// ══════════════════════════════════════════════
+async function checkRunningState() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    chrome.runtime.sendMessage({ command: "get_state", tabId: tab.id }, res => {
+      if (res?.state?.isActive) {
+        setRunningState(true, res.state.currentLoop, res.state.loop);
       } else {
         setRunningState(false);
       }
     });
-
-    showStatusMessage("Automation stopped", "error");
-  } else {
-    // Start action
-    const loop = parseInt(loopCountInput.value || "1");
-    const tasks = getCurrentTasks();
-
-    if (tasks.length === 0) {
-      showStatusMessage("Please provide at least one valid locator or wait action", "error");
-      return;
-    }
-
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-    setRunningState(true, 1, loop);
-
-    chrome.runtime.sendMessage({
-      command: "start",
-      tabId: tab.id,
-      tasks,
-      loop,
-    });
-  }
-};
-
-// Listen for status updates from background script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.command === "status_update") {
-    const { currentLoop, totalLoops, isActive } = message;
-
-    if (isActive) {
-      setRunningState(true, currentLoop, totalLoops);
-    } else {
-      setRunningState(false, currentLoop, totalLoops);
-    }
-  }
-});
-
-// Check if automation is running for current tab when popup opens
-async function checkRunningState() {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    chrome.runtime.sendMessage({
-      command: "get_status",
-      tabId: tab.id,
-    }, (response) => {
-      if (response && response.isActive) {
-        setRunningState(true, response.currentLoop, response.totalLoops);
-      } else {
-        setRunningState(false, response?.currentLoop || 0, response?.totalLoops || 0);
-      }
-    });
-  } catch (e) {
+  } catch {
     setRunningState(false);
   }
 }
 
-// Initialize button states
 setRunningState(false);
-
-// Check status on popup load
 checkRunningState();
 
-// Update loop display when loop count input changes
+// ══════════════════════════════════════════════
+//  LOOP COUNT LIVE PREVIEW
+// ══════════════════════════════════════════════
 loopCountInput.addEventListener("input", () => {
-  const val = parseInt(loopCountInput.value);
-  if (!isNaN(val) && val > 0) {
-    updateLoopStatus(0, val);
-  } else {
-    updateLoopStatus(0, 0);
-  }
+  const v = parseInt(loopCountInput.value);
+  updateLoopStatus(0, !isNaN(v) && v > 0 ? v : 0);
 });
