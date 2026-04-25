@@ -27,6 +27,7 @@ const ACTION_COLORS = {
   input_increment: "#40c4d8",   // cyan
   select: "#f0a040",   // amber
   wait: "#f06060",   // red
+  comment: "#94a3b8", // slate grey
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -160,6 +161,7 @@ function createLocatorRow(task = {}) {
       <option value="input_increment">Input + Increment</option>
       <option value="select">Select</option>
       <option value="wait">Wait</option>
+      <option value="comment">Comment</option>
     </select>
     <input class="actionValue"    placeholder="Value / prefix"   style="display:none;" autocomplete="off" spellcheck="false">
     <input class="waitTime"       type="number" placeholder="ms"  style="display:none;" min="0">
@@ -180,7 +182,7 @@ function createLocatorRow(task = {}) {
   if (task.actionValue) {
     if (task.action === "wait")
       row.querySelector(".waitTime").value = task.actionValue;
-    else if (["input", "select", "input_increment", "random_string"].includes(task.action))
+    else if (["input", "select", "input_increment", "random_string", "comment"].includes(task.action))
       row.querySelector(".actionValue").value = task.actionValue;
   }
   if (task.incrementStart !== undefined && task.incrementStart !== "")
@@ -204,6 +206,11 @@ function createLocatorRow(task = {}) {
       ltSel.disabled = lvInp.disabled = true;
       avInp.style.display = isInp.style.display = rcLbl.style.display = "none";
       wtInp.style.display = "inline-block";
+    } else if (a === "comment") {
+      ltSel.disabled = lvInp.disabled = true;
+      wtInp.style.display = isInp.style.display = rcLbl.style.display = "none";
+      avInp.style.display = "inline-block";
+      avInp.placeholder = "Enter note...";
     } else if (a === "input_increment") {
       ltSel.disabled = lvInp.disabled = false;
       wtInp.style.display = "none";
@@ -278,7 +285,7 @@ function getCurrentTasks() {
     const action = aEl.value;
     let actionValue = "", incrementStart = "", useRandom = false;
 
-    if (["input", "select", "input_increment", "random_string"].includes(action))
+    if (["input", "select", "input_increment", "random_string", "comment"].includes(action))
       actionValue = avEl.value;
     else if (action === "wait")
       actionValue = wtEl.value;
