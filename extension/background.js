@@ -97,7 +97,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === "complete" && automations[tabId].isActive) {
     automations[tabId].processing = false;
     saveState();
-    setTimeout(() => executeNextStep(tabId), 1500); // 1.5s delay to let dynamic content load
+    setTimeout(() => executeNextStep(tabId), 200); // Reduced delay; waitForElement handles the rest
   }
 });
 
@@ -118,35 +118,6 @@ async function executeNextStep(tabId) {
     }
   } catch (e) {
     return; // Tab might be closed
-  }
-
-  // Check if we need to advance to next loop
-  if (state.taskIndex >= state.tasks.length) {
-    state.taskIndex = 0;
-    state.currentLoop++;
-    saveState();
-
-    // Send immediate loop status update when a new loop starts
-    sendLoopStatusUpdate(tabId, state.currentLoop, state.loop);
-
-    if (state.currentLoop > state.loop) {
-      state.isActive = false;
-      state.processing = false;
-      saveState();
-
-      // Send final status update before finishing
-      sendLoopStatusUpdate(tabId, state.currentLoop - 1, state.loop);
-
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: chrome.runtime.getURL('icon128.png'),
-        title: 'Automation Finished',
-        message: `Completed ${state.loop} loops successfully.`,
-        priority: 2
-      });
-      chrome.runtime.sendMessage({ command: "automation_finished", tabId: tabId });
-      return;
-    }
   }
 
   state.processing = true;
@@ -238,7 +209,7 @@ async function executeNextStep(tabId) {
         };
 
         let el = null;
-        if (task.action !== "wait") {
+        if (task.action !== "wait" && task.action !== "comment") {
           el = await waitForElement(task.locatorType, task.locatorValue);
           if (!el) {
             console.error("Element not found:", task.locatorValue);
@@ -268,6 +239,10 @@ async function executeNextStep(tabId) {
         console.log("Running task:", task);
 
         switch (task.action) {
+
+          case "comment":
+            // No operation, used for annotations
+            break;
 
           case "click":
             el.click();
@@ -322,10 +297,33 @@ async function executeNextStep(tabId) {
 
   state.taskIndex++;
   state.processing = false;
-  saveState();
 
+  // Handle Loop Advancement / Completion immediately
+  if (state.taskIndex >= state.tasks.length) {
+    state.taskIndex = 0;
+    state.currentLoop++;
+
+    if (state.currentLoop > state.loop) {
+      state.isActive = false;
+      saveState();
+      // Send final status update
+      sendLoopStatusUpdate(tabId, state.loop, state.loop);
+
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icon128.png'),
+        title: 'Automation Finished',
+        message: `Completed ${state.loop} loops successfully.`,
+        priority: 2
+      });
+      chrome.runtime.sendMessage({ command: "automation_finished", tabId: tabId });
+      return; // Exit immediately without waiting for the next timeout
+    }
+  }
+
+  saveState();
   // Send status update after each task
   sendLoopStatusUpdate(tabId, state.currentLoop, state.loop);
 
-  setTimeout(() => executeNextStep(tabId), 500);
+  setTimeout(() => executeNextStep(tabId), 200);
 }
